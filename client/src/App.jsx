@@ -13,6 +13,7 @@ const Shape = function (x, y) {
 	this.lifespan = 255;
 };
 
+const NUM_BANDS = 16;
 // The main application component
 const App = () => {
 	const canvasRef = useRef(null);
@@ -21,7 +22,7 @@ const App = () => {
 	const [isDarkMode, setIsDarkMode] = useState(true);
 	const [isPlaying, setIsPlaying] = useState(true);
 	const [canvasDimensions, setCanvasDimensions] = useState({ width: 800, height: 600 });
-	const [retryCount, setRetryCount] = useState(0);
+	// const [retryCount, setRetryCount] = useState(0);
 	const [settings, setSettings] = useState({
 		rhythmFactor: 0.05,
 		decayRate: 0.98,
@@ -46,21 +47,21 @@ const App = () => {
 
 			ws.current.onopen = () => {
 				setConnectionStatus("Connected!");
-				setRetryCount(0);
+				// setRetryCount(0);
 				console.log("Connected to WebSocket server");
 			};
 
 			ws.current.onclose = () => {
-				setRetryCount((prev) => {
+				setConnectionStatus((prevStatus) => {
+					const match = prevStatus.match(/\((\d)\/5\)/);
+					let prev = match ? parseInt(match[1], 10) : 0;
 					if (prev < 4) {
-						setConnectionStatus(`Disconnected. Retrying... (${prev + 1}/5)`);
 						setTimeout(connectWebSocket, 3000);
-						return prev + 1;
+						return `Disconnected. Retrying... (${prev + 1}/5)`;
 					} else if (prev === 4) {
-						setConnectionStatus("Disconnected. Retry limit reached. Please refresh to reconnect.");
-						return prev + 1;
+						return "Disconnected. Retry limit reached. Please refresh to reconnect.";
 					} else {
-						return prev;
+						return prevStatus;
 					}
 				});
 			};
@@ -115,7 +116,6 @@ const App = () => {
 		return () => {
 			if (ws.current) ws.current.close();
 		};
-		// eslint-disable-next-line
 	}, []);
 
 	// --- Animation Loop Logic ---
