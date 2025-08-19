@@ -3,6 +3,10 @@ import numpy as np
 import asyncio
 import websockets
 import json
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
 
 # Audio stream parameters
 CHUNK = 2046
@@ -15,17 +19,58 @@ BEAT_VELOCITY_THRESHOLD = 5000
 last_bass_energy = 0
 last_beat_trigger = 0
 
+# --- PERUBAHAN 1: Buat state untuk audio stream agar bisa diakses global ---
+# Ini penting agar kita bisa menghentikan dan memulai stream saat perangkat diganti
+audio_state = {
+    "p": None,
+    "stream": None,
+    "audio_processor_task": None,
+    "current_device_index": 2 # Default device index, bisa disesuaikan
+}
+
+def get_input_devices(p_instance):
+    """Mendapatkan daftar perangkat input audio."""
+    devices = []
+    for i in range(p_instance.get_device_count()):
+        info = p_instance.get_device_info_by_index(i)
+        if info["maxInputChannels"] > 0:
+            devices.append({"index": i, "name": info["name"]})
+    return devices
+
+def start_audio_stream(p_instance, device_index):
+    """Membuka dan memulai audio stream baru berdasarkan device index."""
+    try:
+        stream = p_instance.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RATE,
+            input=True,
+            frames_per_buffer=CHUNK,
+            input_device_index=device_index
+        )
+        stream.start_stream()
+        logging.info(f"Audio stream started on device index: {device_index}")
+        return stream
+    except Exception as e:
+        logging.error(f"Failed to open stream on device {device_index}: {e}")
+        # Jika gagal, coba buka stream default
+        if device_index is not None:
+            logging.warning("Falling back to default device.")
+            return start_audio_stream(p_instance, None)
+        return None
+
+
 async def audio_processor(websocket, stream):
     """
-    This function processes the audio and sends the data over the WebSocket.
-    It runs the blocking stream.read() call in a separate thread.
+    Memproses audio dan mengirim data via WebSocket.
+    Fungsi ini sekarang lebih fokus pada pemrosesan saja.
     """
     global last_bass_energy, last_beat_trigger
-    print(f"WebSocket client connected!")
     loop = asyncio.get_event_loop()
 
     try:
         while True:
+            # Jalankan pembacaan stream yang blocking di thread terpisah
             data = await loop.run_in_executor(
                 None, stream.read, CHUNK, False
             )
@@ -54,67 +99,107 @@ async def audio_processor(websocket, stream):
 
             normalized_mids = min(mids_energy / 10000, 1)
 
+            # --- PERUBAHAN 2: Tambahkan 'type' ke pesan agar frontend bisa membedakan ---
             audio_data = {
-                "is_beat": is_beat,
-                "rhythm_factor": normalized_mids
+                "type": "audio_data",
+                "payload": {
+                    "is_beat": is_beat,
+                    "rhythm_factor": normalized_mids
+                }
             }
             
             await websocket.send(json.dumps(audio_data))
-
+    except asyncio.CancelledError:
+        logging.info("Audio processor task cancelled.")
     except websockets.exceptions.ConnectionClosed:
-        print("WebSocket client disconnected.")
+        logging.info("WebSocket client disconnected during audio processing.")
     except Exception as e:
-        print(f"An error occurred in audio_processor: {e}")
+        logging.error(f"An error occurred in audio_processor: {e}")
 
-async def main():
+async def handler(websocket):
     """
-    Main function to initialize PyAudio and start the WebSocket server.
+    Handler utama untuk setiap koneksi WebSocket.
+    Mengirim daftar perangkat dan menangani pesan dari klien.
     """
-    print("Daftar input device:")
-    p = pyaudio.PyAudio()
-    for i in range(p.get_device_count()):
-        info = p.get_device_info_by_index(i)
-        if info["maxInputChannels"] > 0:
-            print(f"Index {i}: {info['name']} (Channels: {info['maxInputChannels']})")
-    print("Selesai menampilkan daftar device.\n")
-
-    print("After PyAudio init")
-
-    # Ganti 'input_device_index=2' jika mau pakai Stereo Mix
-    # Kosongkan untuk pakai mic default
-    print("Before stream open")
-    stream = p.open(format=FORMAT,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    input=True,
-                    frames_per_buffer=CHUNK,
-                    input_device_index=2)
+    logging.info("WebSocket client connected!")
     
-    stream.start_stream()
-    print("Audio stream started.")
-
-    async def handler(websocket):
-        print("Handler called!")
-        await audio_processor(websocket, stream)
+    # Kirim daftar perangkat saat koneksi pertama kali dibuat
+    devices = get_input_devices(audio_state["p"])
+    await websocket.send(json.dumps({
+        "type": "device_list",
+        "payload": devices
+    }))
+    
+    # Memulai stream audio awal dengan device default
+    audio_state["stream"] = start_audio_stream(audio_state["p"], audio_state["current_device_index"])
+    if audio_state["stream"]:
+        # Mulai task untuk memproses audio
+        audio_state["audio_processor_task"] = asyncio.create_task(
+            audio_processor(websocket, audio_state["stream"])
+        )
 
     try:
-        async def process_request(path, request):
-            if "Upgrade" not in request.headers:
-                return (426, [("Content-Type", "text/plain")], b"WebSocket endpoint.\n")
-            return None
+        # --- PERUBAHAN 3: Loop untuk mendengarkan pesan dari frontend ---
+        async for message in websocket:
+            data = json.loads(message)
+            
+            if data.get("type") == "select_device":
+                new_device_index = data.get("payload", {}).get("index")
+                logging.info(f"Received request to switch to device index: {new_device_index}")
 
-        async with websockets.serve(handler, "localhost", 8766, process_request=process_request):
-            print("Server started on ws://localhost:8766")
-            await asyncio.Future()
+                # 1. Hentikan task audio processor yang sedang berjalan
+                if audio_state["audio_processor_task"]:
+                    audio_state["audio_processor_task"].cancel()
+                    await audio_state["audio_processor_task"]
+
+                # 2. Hentikan dan tutup stream yang lama
+                if audio_state["stream"]:
+                    audio_state["stream"].stop_stream()
+                    audio_state["stream"].close()
+
+                # 3. Mulai stream baru dengan perangkat yang dipilih
+                audio_state["current_device_index"] = new_device_index
+                audio_state["stream"] = start_audio_stream(audio_state["p"], new_device_index)
+
+                # 4. Buat dan jalankan task audio processor baru
+                if audio_state["stream"]:
+                    audio_state["audio_processor_task"] = asyncio.create_task(
+                        audio_processor(websocket, audio_state["stream"])
+                    )
+
+    except websockets.exceptions.ConnectionClosed:
+        logging.info("WebSocket client disconnected.")
     finally:
-        print("Server is shutting down. Cleaning up resources.")
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-        print("Audio resources cleaned up.")
+        # Cleanup saat koneksi ditutup
+        if audio_state["audio_processor_task"]:
+            audio_state["audio_processor_task"].cancel()
+        if audio_state["stream"]:
+            audio_state["stream"].stop_stream()
+            audio_state["stream"].close()
+            audio_state["stream"] = None
+
+
+async def main():
+    """Fungsi utama untuk inisialisasi PyAudio dan server WebSocket."""
+    audio_state["p"] = pyaudio.PyAudio()
+
+    # Tampilkan daftar device di konsol saat startup
+    print("Available input devices:")
+    devices = get_input_devices(audio_state["p"])
+    for device in devices:
+        print(f"  Index {device['index']}: {device['name']}")
+    print("-" * 20)
+    
+    try:
+        async with websockets.serve(handler, "localhost", 8766):
+            logging.info("Server started on ws://localhost:8766")
+            await asyncio.Future()  # run forever
+    finally:
+        logging.info("Server is shutting down. Cleaning up PyAudio.")
+        audio_state["p"].terminate()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Server stopped by user.")
+        logging.info("Server stopped by user.")

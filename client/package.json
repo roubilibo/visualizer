@@ -1,7 +1,9 @@
 {
 	"name": "muvisalizer",
 	"private": true,
-	"version": "1.0.0",
+	"version": "1.0.2",
+	"description": "My Awesome Visualizer Client",
+	"author": "roubilibo",
 	"type": "module",
 	"main": "electron/main.js",
 	"scripts": {
@@ -17,7 +19,8 @@
 		"lucide-react": "^0.539.0",
 		"react": "^19.1.1",
 		"react-dom": "^19.1.1",
-		"tailwindcss": "^4.1.11"
+		"tailwindcss": "^4.1.11",
+		"tree-kill": "^1.2.2"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.33.0",

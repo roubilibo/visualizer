@@ -28,7 +28,8 @@ const App = () => {
 		decayRate: 0.98,
 		maxShapes: 50,
 	});
-
+	const [audioDevices, setAudioDevices] = useState([]);
+	const [selectedDevice, setSelectedDevice] = useState("");
 	const ws = useRef(null);
 	const animationFrameId = useRef(null);
 
@@ -72,39 +73,48 @@ const App = () => {
 
 			ws.current.onmessage = (event) => {
 				try {
-					const data = JSON.parse(event.data);
-					const currentSettings = settingsRef.current;
-					// --- FIX 3: Gunakan nilai dari ref, bukan dari state langsung ---
-					const currentDimensions = canvasDimensionsRef.current;
+					const message = JSON.parse(event.data);
 
-					setShapes((prevShapes) => {
-						let newShapes = [...prevShapes];
-
-						if (data.is_beat) {
-							// Gunakan currentDimensions untuk posisi tengah yang benar
-							newShapes.push(new Shape(currentDimensions.width / 2, currentDimensions.height / 2));
-							if (newShapes.length > currentSettings.maxShapes) {
-								newShapes = newShapes.slice(-currentSettings.maxShapes);
-							}
+					// --- PERUBAHAN 2: Handle pesan berdasarkan tipenya ---
+					if (message.type === "device_list") {
+						console.log("Received device list:", message.payload);
+						setAudioDevices(message.payload);
+						// Pilih perangkat pertama sebagai default jika ada
+						if (message.payload.length > 0) {
+							// Coba cari 'Stereo Mix' atau yang mirip sebagai default
+							const defaultDevice =
+								message.payload.find((d) => d.name.toLowerCase().includes("stereo mix")) ||
+								message.payload[2];
+							setSelectedDevice(defaultDevice ? defaultDevice.index : "");
 						}
+					} else if (message.type === "audio_data") {
+						const data = message.payload;
+						const currentSettings = settingsRef.current;
+						const currentDimensions = canvasDimensionsRef.current;
 
-						const updatedAndFilteredShapes = newShapes
-							.map((shape) => {
-								const newRadius =
-									shape.radius +
-									data.rhythm_factor * currentSettings.rhythmFactor * shape.radius -
-									1;
-								const newLifespan = shape.lifespan * currentSettings.decayRate;
-								return {
+						setShapes((prevShapes) => {
+							let newShapes = [...prevShapes];
+							if (data.is_beat) {
+								newShapes.push(
+									new Shape(currentDimensions.width / 2, currentDimensions.height / 2)
+								);
+								if (newShapes.length > currentSettings.maxShapes) {
+									newShapes = newShapes.slice(-currentSettings.maxShapes);
+								}
+							}
+							const updatedAndFilteredShapes = newShapes
+								.map((shape) => ({
 									...shape,
-									radius: newRadius,
-									lifespan: newLifespan,
-								};
-							})
-							.filter((shape) => shape.lifespan > 1);
-
-						return updatedAndFilteredShapes;
-					});
+									radius:
+										shape.radius +
+										data.rhythm_factor * currentSettings.rhythmFactor * shape.radius -
+										1,
+									lifespan: shape.lifespan * currentSettings.decayRate,
+								}))
+								.filter((shape) => shape.lifespan > 1);
+							return updatedAndFilteredShapes;
+						});
+					}
 				} catch (error) {
 					console.error("Failed to parse WebSocket message:", error);
 				}
@@ -177,6 +187,23 @@ const App = () => {
 		setSettings((prev) => ({ ...prev, [key]: value }));
 	};
 
+	const handleDeviceChange = (e) => {
+		const newDeviceIndex = parseInt(e.target.value, 10);
+		setSelectedDevice(e.target.value);
+
+		if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+			console.log(`Sending request to switch to device index: ${newDeviceIndex}`);
+			ws.current.send(
+				JSON.stringify({
+					type: "select_device",
+					payload: {
+						index: newDeviceIndex,
+					},
+				})
+			);
+		}
+	};
+
 	const handleToggleDarkMode = () => setIsDarkMode((prev) => !prev);
 	const handleTogglePlayPause = () => setIsPlaying((prev) => !prev);
 	const handleReset = () => setShapes([]);
@@ -215,37 +242,63 @@ const App = () => {
 								<h4 className="font-medium leading-none">Settings</h4>
 								<p className="text-sm text-gray-500">Adjust visualizer parameters.</p>
 							</div>
-							<div className="grid gap-2">
-								<label className="text-sm">Rhythm Pulse ({settings.rhythmFactor.toFixed(2)})</label>
-								<input
-									type="range"
-									min="0.005"
-									max="0.2"
-									step="0.005"
-									value={settings.rhythmFactor}
-									onChange={(e) => handleSliderChange("rhythmFactor", parseFloat(e.target.value))}
-									className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-								/>
-								<label className="text-sm">Decay Rate ({settings.decayRate.toFixed(3)})</label>
-								<input
-									type="range"
-									min="0.9"
-									max="0.999"
-									step="0.001"
-									value={settings.decayRate}
-									onChange={(e) => handleSliderChange("decayRate", parseFloat(e.target.value))}
-									className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-								/>
-								<label className="text-sm">Max Shapes ({settings.maxShapes})</label>
-								<input
-									type="range"
-									min="10"
-									max="200"
-									step="10"
-									value={settings.maxShapes}
-									onChange={(e) => handleSliderChange("maxShapes", parseInt(e.target.value))}
-									className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-								/>
+							<div className="grid gap-3">
+								<div>
+									<label className="text-sm font-medium">Audio Input</label>
+									<select
+										value={selectedDevice}
+										onChange={handleDeviceChange}
+										disabled={audioDevices.length === 0}
+										className="mt-1 w-full p-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
+										{audioDevices.length === 0 ? (
+											<option>Loading devices...</option>
+										) : (
+											audioDevices.map((device) => (
+												<option key={device.index} value={device.index}>
+													{device.name}
+												</option>
+											))
+										)}
+									</select>
+								</div>
+								<div>
+									<label className="text-sm">
+										Rhythm Pulse ({settings.rhythmFactor.toFixed(2)})
+									</label>
+									<input
+										type="range"
+										min="0.005"
+										max="0.2"
+										step="0.005"
+										value={settings.rhythmFactor}
+										onChange={(e) => handleSliderChange("rhythmFactor", parseFloat(e.target.value))}
+										className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
+									/>
+								</div>
+								<div>
+									<label className="text-sm">Decay Rate ({settings.decayRate.toFixed(3)})</label>
+									<input
+										type="range"
+										min="0.9"
+										max="0.999"
+										step="0.001"
+										value={settings.decayRate}
+										onChange={(e) => handleSliderChange("decayRate", parseFloat(e.target.value))}
+										className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
+									/>
+								</div>
+								<div>
+									<label className="text-sm">Max Shapes ({settings.maxShapes})</label>
+									<input
+										type="range"
+										min="10"
+										max="200"
+										step="10"
+										value={settings.maxShapes}
+										onChange={(e) => handleSliderChange("maxShapes", parseInt(e.target.value))}
+										className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
+									/>
+								</div>
 							</div>
 						</div>
 					</div>

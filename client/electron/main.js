@@ -3,8 +3,9 @@
 
 import { app, BrowserWindow, Menu } from "electron";
 import path from "path";
-import { spawn, exec } from "child_process";
-import { fileURLToPath } from "url"; // Helper untuk __dirname
+import { spawn } from "child_process";
+import { fileURLToPath } from "url";
+import treeKill from "tree-kill";
 
 // Di ES Modules, __dirname tidak tersedia secara default. Ini cara modern untuk mendapatkannya.
 const __filename = fileURLToPath(import.meta.url);
@@ -35,6 +36,20 @@ function createPythonServer() {
 	});
 }
 
+function killPythonProcess() {
+	if (pythonProcess) {
+		console.log(`Mematikan proses server Python dengan tree-kill, PID: ${pythonProcess.pid}`);
+		treeKill(pythonProcess.pid, "SIGKILL", (err) => {
+			if (err) {
+				console.error("Gagal mematikan proses:", err);
+			} else {
+				console.log("Proses server Python berhasil dimatikan.");
+			}
+		});
+		pythonProcess = null;
+	}
+}
+
 function createWindow() {
 	Menu.setApplicationMenu(null);
 	const win = new BrowserWindow({
@@ -57,22 +72,7 @@ function createWindow() {
 
 	win.on("closed", () => {
 		console.log("Jendela utama ditutup, mencoba mematikan server Python...");
-		if (pythonProcess) {
-			// Kita gunakan lagi perintah 'taskkill' yang sudah terbukti andal
-			if (process.platform === "win32") {
-				console.log(`Menggunakan taskkill untuk PID: ${pythonProcess.pid}`);
-				exec(`taskkill /PID ${pythonProcess.pid} /F /T`, (error, stdout) => {
-					if (error) {
-						console.error(`Gagal mematikan proses saat jendela ditutup: ${error}`);
-						return;
-					}
-					console.log(`Proses berhasil dimatikan dari event 'closed': ${stdout}`);
-				});
-			} else {
-				pythonProcess.kill();
-			}
-			pythonProcess = null;
-		}
+		killPythonProcess();
 	});
 }
 
@@ -90,24 +90,11 @@ app.whenReady().then(() => {
 
 app.on("will-quit", () => {
 	console.log("Aplikasi akan ditutup, mematikan server Python...");
-	if (pythonProcess) {
-		if (process.platform === "win32") {
-			console.log(`Menggunakan taskkill untuk PID: ${pythonProcess.pid}`);
-			exec(`taskkill /PID ${pythonProcess.pid} /F /T`, (error, stdout) => {
-				if (error) {
-					console.error(`Gagal mematikan proses: ${error}`);
-					return;
-				}
-				console.log(`Proses berhasil dimatikan: ${stdout}`);
-			});
-		} else {
-			pythonProcess.kill();
-		}
-		pythonProcess = null;
-	}
+	killPythonProcess();
 });
 
 app.on("window-all-closed", () => {
+	killPythonProcess();
 	if (process.platform !== "darwin") {
 		app.quit();
 	}

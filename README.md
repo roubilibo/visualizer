@@ -9,5 +9,5 @@ langkah develop server
 langkah build electron 
 - masuk ke client
 - jalankan `npm run build` untuk build react
-- jalankan `npn run dist` untuk build menjadi apk
+- jalankan `npn run dist` untuk build menjadi app
 Buka terminal di folder client, jalankan npm run dist untuk mem-bundle aplikasi Electron-mu.
