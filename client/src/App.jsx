@@ -10,6 +10,9 @@ const Shape = function (x, y) {
 	this.color = `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(
 		Math.random() * 255
 	)}, ${Math.floor(Math.random() * 255)}, 1)`;
+	this.color2 = `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(
+    Math.random() * 255
+	)}, ${Math.floor(Math.random() * 255)}, 1)`;
 	this.lifespan = 255;
 };
 
@@ -152,8 +155,19 @@ const App = () => {
 			}
 			ctx.closePath();
 
-			const [r, g, b] = shape.color.match(/\d+/g).map(Number);
-			ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${shape.lifespan / 255})`;
+			const gradient = ctx.createLinearGradient(
+				shape.x - shape.radius, shape.y,  
+				shape.x + shape.radius, shape.y   
+			);
+
+			const [r1, g1, b1] = shape.color.match(/\d+/g).map(Number);
+			const [r2, g2, b2] = shape.color2.match(/\d+/g).map(Number);
+
+			const opacity = shape.lifespan > 180 ? 1.0 : Math.max(0.6, shape.lifespan / 120);
+			gradient.addColorStop(0, `rgba(${r1}, ${g1}, ${b1}, ${opacity})`);
+			gradient.addColorStop(1, `rgba(${r2}, ${g2}, ${b2}, ${opacity})`);
+			
+			ctx.strokeStyle = gradient;
 			ctx.stroke();
 		});
 

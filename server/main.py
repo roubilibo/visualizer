@@ -25,7 +25,7 @@ audio_state = {
     "p": None,
     "stream": None,
     "audio_processor_task": None,
-    "current_device_index": 2 # Default device index, bisa disesuaikan
+    "current_device_index": 11 # Default device index, bisa disesuaikan
 }
 
 def get_input_devices(p_instance):
