@@ -22,7 +22,6 @@ const App = () => {
 	const [isDarkMode, setIsDarkMode] = useState(true);
 	const [isPlaying, setIsPlaying] = useState(true);
 	const [canvasDimensions, setCanvasDimensions] = useState({ width: 800, height: 600 });
-	// const [retryCount, setRetryCount] = useState(0);
 	const [settings, setSettings] = useState({
 		rhythmFactor: 0.05,
 		decayRate: 0.98,
@@ -30,15 +29,16 @@ const App = () => {
 	});
 	const [audioDevices, setAudioDevices] = useState([]);
 	const [selectedDevice, setSelectedDevice] = useState("");
+	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
 	const ws = useRef(null);
 	const animationFrameId = useRef(null);
 
 	const settingsRef = useRef(settings);
+	const settingsPanelRef = useRef(null);
 	settingsRef.current = settings;
 
-	// --- FIX 1: Buat ref baru untuk canvasDimensions ---
 	const canvasDimensionsRef = useRef(canvasDimensions);
-	// --- FIX 2: Selalu update ref dengan state terbaru setiap render ---
 	canvasDimensionsRef.current = canvasDimensions;
 
 	// --- WebSocket Connection Logic ---
@@ -75,7 +75,6 @@ const App = () => {
 				try {
 					const message = JSON.parse(event.data);
 
-					// --- PERUBAHAN 2: Handle pesan berdasarkan tipenya ---
 					if (message.type === "device_list") {
 						console.log("Received device list:", message.payload);
 						setAudioDevices(message.payload);
@@ -170,6 +169,21 @@ const App = () => {
 		return () => cancelAnimationFrame(animationFrameId.current);
 	}, [isPlaying, draw]);
 
+	useEffect(() => {
+		const handleClickOutside = (event) => {
+			// Cek apakah panel terbuka dan klik terjadi di luar elemen yang ada di dalam ref
+			if (settingsPanelRef.current && !settingsPanelRef.current.contains(event.target)) {
+				setIsSettingsOpen(false);
+			}
+		};
+
+		document.addEventListener("mousedown", handleClickOutside);
+
+		return () => {
+			document.removeEventListener("mousedown", handleClickOutside);
+		};
+	}, []);
+
 	// --- Event Handlers & UI Setup ---
 	useEffect(() => {
 		const handleResize = () => {
@@ -203,7 +217,9 @@ const App = () => {
 			);
 		}
 	};
-
+	const handleToggleSettings = () => {
+		setIsSettingsOpen((prev) => !prev);
+	};
 	const handleToggleDarkMode = () => setIsDarkMode((prev) => !prev);
 	const handleTogglePlayPause = () => setIsPlaying((prev) => !prev);
 	const handleReset = () => setShapes([]);
@@ -232,11 +248,18 @@ const App = () => {
 					className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
 					{isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
 				</button>
-				<div className="relative group">
-					<button className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
+				<div className="relative group" ref={settingsPanelRef}>
+					<button
+						onClick={handleToggleSettings}
+						className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
 						<SlidersHorizontal size={20} />
 					</button>
-					<div className="absolute top-12 right-0 w-80 p-4 rounded-2xl shadow-2xl transition-all duration-300 transform scale-95 opacity-0 pointer-events-none group-hover:scale-100 group-hover:opacity-100 group-hover:pointer-events-auto bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+					<div
+						className={`absolute top-12 right-0 w-80 p-4 rounded-2xl shadow-2xl transition-all duration-300 transform bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 ${
+							isSettingsOpen
+								? "scale-100 opacity-100 pointer-events-auto"
+								: "scale-95 opacity-0 pointer-events-none"
+						}`}>
 						<div className="grid gap-4">
 							<div className="space-y-2">
 								<h4 className="font-medium leading-none">Settings</h4>
