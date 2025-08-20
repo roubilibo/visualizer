@@ -19,13 +19,11 @@ BEAT_VELOCITY_THRESHOLD = 5000
 last_bass_energy = 0
 last_beat_trigger = 0
 
-# --- PERUBAHAN 1: Buat state untuk audio stream agar bisa diakses global ---
-# Ini penting agar kita bisa menghentikan dan memulai stream saat perangkat diganti
 audio_state = {
     "p": None,
     "stream": None,
     "audio_processor_task": None,
-    "current_device_index": 2 # Default device index, bisa disesuaikan
+    "current_device_index": 2 
 }
 
 def get_input_devices(p_instance):
@@ -99,7 +97,6 @@ async def audio_processor(websocket, stream):
 
             normalized_mids = min(mids_energy / 10000, 1)
 
-            # --- PERUBAHAN 2: Tambahkan 'type' ke pesan agar frontend bisa membedakan ---
             audio_data = {
                 "type": "audio_data",
                 "payload": {
@@ -139,7 +136,6 @@ async def handler(websocket):
         )
 
     try:
-        # --- PERUBAHAN 3: Loop untuk mendengarkan pesan dari frontend ---
         async for message in websocket:
             data = json.loads(message)
             
@@ -147,21 +143,17 @@ async def handler(websocket):
                 new_device_index = data.get("payload", {}).get("index")
                 logging.info(f"Received request to switch to device index: {new_device_index}")
 
-                # 1. Hentikan task audio processor yang sedang berjalan
                 if audio_state["audio_processor_task"]:
                     audio_state["audio_processor_task"].cancel()
                     await audio_state["audio_processor_task"]
 
-                # 2. Hentikan dan tutup stream yang lama
                 if audio_state["stream"]:
                     audio_state["stream"].stop_stream()
                     audio_state["stream"].close()
 
-                # 3. Mulai stream baru dengan perangkat yang dipilih
                 audio_state["current_device_index"] = new_device_index
                 audio_state["stream"] = start_audio_stream(audio_state["p"], new_device_index)
 
-                # 4. Buat dan jalankan task audio processor baru
                 if audio_state["stream"]:
                     audio_state["audio_processor_task"] = asyncio.create_task(
                         audio_processor(websocket, audio_state["stream"])
@@ -170,7 +162,6 @@ async def handler(websocket):
     except websockets.exceptions.ConnectionClosed:
         logging.info("WebSocket client disconnected.")
     finally:
-        # Cleanup saat koneksi ditutup
         if audio_state["audio_processor_task"]:
             audio_state["audio_processor_task"].cancel()
         if audio_state["stream"]:
@@ -193,7 +184,7 @@ async def main():
     try:
         async with websockets.serve(handler, "localhost", 8766):
             logging.info("Server started on ws://localhost:8766")
-            await asyncio.Future()  # run forever
+            await asyncio.Future()
     finally:
         logging.info("Server is shutting down. Cleaning up PyAudio.")
         audio_state["p"].terminate()

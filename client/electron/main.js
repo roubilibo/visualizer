@@ -1,13 +1,10 @@
 /* global process */
-// client/electron/main.js (Versi ES Module)
-
 import { app, BrowserWindow, Menu } from "electron";
 import path from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import treeKill from "tree-kill";
 
-// Di ES Modules, __dirname tidak tersedia secara default. Ini cara modern untuk mendapatkannya.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -25,7 +22,6 @@ function createPythonServer() {
 
 	console.log(`Menjalankan executable server di: ${scriptPath}`);
 
-	// Jalankan file .exe-nya langsung!
 	pythonProcess = spawn(scriptPath);
 
 	pythonProcess.stdout.on("data", (data) => {
