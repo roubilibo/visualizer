@@ -95,7 +95,7 @@ Untuk menjalankan proyek ini di komputermu, ikuti langkah-langkah berikut.
     # Windows:
     .\venv\Scripts\activate
     # Git-Bash/macOS/Linux:
-    # source venv/bin/activate
+     source venv/Scripts/activate
 
     # Install dependensi Python
     pip install -r requirements.txt
