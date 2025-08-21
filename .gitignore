@@ -27,7 +27,10 @@
 
 /server/build
 /server/dist
+/server/main.build
+/server/main.dist
 /server/venv
+/server/venv312
 /server/**/*.exe
 /server/*.spec
 __pycache__/

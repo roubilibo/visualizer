@@ -1,7 +1,7 @@
 {
 	"name": "muvisalizer",
 	"private": true,
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "My Awesome Visualizer Client",
 	"author": "roubilibo",
 	"type": "module",
@@ -15,15 +15,14 @@
 		"dist": "npm run build && electron-builder"
 	},
 	"dependencies": {
-		"@tailwindcss/vite": "^4.1.11",
 		"lucide-react": "^0.539.0",
 		"react": "^19.1.1",
 		"react-dom": "^19.1.1",
-		"tailwindcss": "^4.1.11",
 		"tree-kill": "^1.2.2"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.33.0",
+		"@tailwindcss/vite": "^4.1.11",
 		"@types/react": "^19.1.10",
 		"@types/react-dom": "^19.1.7",
 		"@vitejs/plugin-react": "^5.0.0",
@@ -33,11 +32,12 @@
 		"eslint-plugin-react-hooks": "^5.2.0",
 		"eslint-plugin-react-refresh": "^0.4.20",
 		"globals": "^16.3.0",
+		"tailwindcss": "^4.1.11",
 		"vite": "^7.1.2"
 	},
 	"build": {
 		"appId": "com.obil.muvisualizer",
-		"productName": "My Awesome Visualizer",
+		"productName": "MuVisualizer",
 		"files": [
 			"dist/**/*",
 			"electron/**/*"
@@ -48,8 +48,8 @@
 		},
 		"extraResources": [
 			{
-				"from": "../server",
-				"to": "server",
+				"from": "../server/dist/main.exe",
+				"to": "backend/main.exe",
 				"filter": [
 					"**/*"
 				]

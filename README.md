@@ -158,17 +158,13 @@ Jika kamu ingin membuat aplikasi ini menjadi satu file executable yang bisa diin
 
     # Jalankan build dengan nama output 'main'
     pyinstaller --name "main" --onefile --windowed main.py
+
+    # Atau dengan UPX
+    pyinstaller --name "main" --onefile --windowed --upx-dir="direktori upx" main.py
     ```
 
     Ini akan menghasilkan file `main.exe` baru di dalam folder `server/dist/`.
-
-2.  **Salin File Executable:**
-    **Langkah ini sangat penting.** Konfigurasi build Electron akan mencari file `main.exe` langsung di dalam folder `/server`. Salin file yang baru dibuat dari `server/dist/main.exe` dan letakkan di `server/main.exe`, menimpa file lama jika ada.
-
-    **Salin dari:** `server/dist/main.exe`
-    **Tempel ke:** `server/main.exe`
-
-3.  **Build Frontend & Paket Electron:**
+2.  **Build Frontend & Paket Electron:**
     Setelah backend `.exe` disalin ke lokasi yang benar, buka terminal di direktori `/client` dan jalankan:
 
     ```bash
@@ -176,7 +172,7 @@ Jika kamu ingin membuat aplikasi ini menjadi satu file executable yang bisa diin
     npm run dist
     ```
 
-4.  **Selesai!** 🎉
+3.  **Selesai!** 🎉
     Installer aplikasimu yang sudah jadi akan berada di folder `client/release/`.
 
 ---
