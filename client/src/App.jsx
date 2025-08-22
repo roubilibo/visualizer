@@ -6,17 +6,22 @@ const Shape = function (x, y) {
 	this.y = y;
 	this.radius = 30;
 	this.numVertices = Math.floor(Math.random() * 8) + 3;
-	this.rgb = [
-		Math.floor(Math.random() * 255),
-		Math.floor(Math.random() * 255),
-		Math.floor(Math.random() * 255),
-	];
+	this.color = `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(
+		Math.random() * 255
+	)}, ${Math.floor(Math.random() * 255)}, 1)`;
+	this.color2 = `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(
+    Math.random() * 255
+	)}, ${Math.floor(Math.random() * 255)}, 1)`;
 	this.lifespan = 255;
 };
 
+const NUM_BANDS = 16;
+
 const App = () => {
 	const [connectionStatus, setConnectionStatus] = useState("Connecting...");
+	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isDarkMode, setIsDarkMode] = useState(true);
+	const [isGradientShapes, setIsGradientShapes] = useState(false);
 	const [isPlaying, setIsPlaying] = useState(true);
 	const [canvasDimensions, setCanvasDimensions] = useState({ width: 800, height: 600 });
 	const [settings, setSettings] = useState({
@@ -134,12 +139,29 @@ const App = () => {
 			}
 			ctx.closePath();
 
-			// Use the pre-calculated RGB values for much faster rendering
-			const [r, g, b] = shape.rgb;
-			ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${shape.lifespan / 255})`;
+			const gradient = ctx.createLinearGradient(
+				shape.x - shape.radius, shape.y,  
+				shape.x + shape.radius, shape.y   
+			);
+
+			const [r1, g1, b1] = shape.color.match(/\d+/g).map(Number);
+			const [r2, g2, b2] = shape.color2.match(/\d+/g).map(Number);
+
+			const opacity = shape.lifespan > 180 ? 1.0 : Math.max(0.6, shape.lifespan / 120);
+			gradient.addColorStop(0, `rgba(${r1}, ${g1}, ${b1}, ${opacity})`);
+			
+			if (isGradientShapes) {
+				gradient.addColorStop(1, `rgba(${r2}, ${g2}, ${b2}, ${opacity})`);
+			} else {
+				gradient.addColorStop(1, `rgba(${r1}, ${g1}, ${b1}, ${opacity})`);
+			}
+			
+			ctx.strokeStyle = gradient;
 			ctx.stroke();
 		});
-	}, []);
+
+		animationFrameId.current = requestAnimationFrame(draw);
+	}, [shapes, isGradientShapes]);
 
 	useEffect(() => {
 		let animationFrameId;
@@ -157,16 +179,6 @@ const App = () => {
 			cancelAnimationFrame(animationFrameId);
 		};
 	}, [isPlaying, draw]);
-
-	useEffect(() => {
-		const handleClickOutside = (event) => {
-			if (settingsPanelRef.current && !settingsPanelRef.current.contains(event.target)) {
-				setIsSettingsOpen(false);
-			}
-		};
-		document.addEventListener("mousedown", handleClickOutside);
-		return () => document.removeEventListener("mousedown", handleClickOutside);
-	}, []);
 
 	useEffect(() => {
 		const handleResize = () => {
@@ -201,8 +213,9 @@ const App = () => {
 		}
 	};
 
-	const handleToggleSettings = () => setIsSettingsOpen((prev) => !prev);
+	const handleToggleSettings = () => setIsSettingsOpen(prev => !prev);
 	const handleToggleDarkMode = () => setIsDarkMode((prev) => !prev);
+	const handleGradientShapes = () => setIsGradientShapes((prev) => !prev);
 	const handleTogglePlayPause = () => setIsPlaying((prev) => !prev);
 
 	const handleReset = () => {
@@ -214,7 +227,6 @@ const App = () => {
 			className={`flex flex-col items-center justify-center min-h-screen p-4 font-sans transition-colors duration-500 ${
 				isDarkMode ? "bg-gray-900 text-gray-100" : "bg-gray-100 text-gray-900"
 			}`}>
-			{/* UI Controls: Play, Pause, Reset, Dark Mode, Settings */}
 			<div className="absolute top-4 left-4 z-10 flex space-x-2">
 				<button
 					onClick={handleTogglePlayPause}
@@ -233,88 +245,110 @@ const App = () => {
 					className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
 					{isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
 				</button>
-				<div className="relative group" ref={settingsPanelRef}>
-					<button
+				<div className="relative">
+					<button 
 						onClick={handleToggleSettings}
 						className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
 						<SlidersHorizontal size={20} />
 					</button>
-					<div
-						className={`absolute top-12 right-0 w-80 p-4 rounded-2xl shadow-2xl transition-all duration-300 transform bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 ${
-							isSettingsOpen
-								? "scale-100 opacity-100 pointer-events-auto"
-								: "scale-95 opacity-0 pointer-events-none"
-						}`}>
-						<div className="grid gap-4">
-							<div className="space-y-2">
-								<h4 className="font-medium leading-none">Settings</h4>
-								<p className="text-sm text-gray-500">Adjust visualizer parameters.</p>
-							</div>
-							<div className="grid gap-3">
-								<div>
-									<label className="text-sm font-medium">Audio Input</label>
-									<select
-										value={selectedDevice}
-										onChange={handleDeviceChange}
-										disabled={audioDevices.length === 0}
-										className="mt-1 w-full p-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
-										{audioDevices.length === 0 ? (
-											<option>Loading devices...</option>
-										) : (
-											audioDevices.map((device) => (
-												<option key={device.index} value={device.index}>
-													{device.name}
-												</option>
-											))
-										)}
-									</select>
+					{isSettingsOpen && (
+						<div className="absolute top-12 right-0 w-80 p-4 rounded-2xl shadow-2xl transition-all duration-300 transform bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+							<div className="grid gap-4">
+								<div className="space-y-2">
+									<h4 className="font-medium leading-none">Settings</h4>
+									<p className="text-sm text-gray-500">Adjust visualizer parameters.</p>
 								</div>
-								<div>
-									<label className="text-sm">
-										Rhythm Pulse ({settings.rhythmFactor.toFixed(2)})
-									</label>
-									<input
-										type="range"
-										min="0.005"
-										max="0.2"
-										step="0.005"
-										value={settings.rhythmFactor}
-										onChange={(e) => handleSliderChange("rhythmFactor", parseFloat(e.target.value))}
-										className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-									/>
-								</div>
-								<div>
-									<label className="text-sm">Decay Rate ({settings.decayRate.toFixed(3)})</label>
-									<input
-										type="range"
-										min="0.9"
-										max="0.999"
-										step="0.001"
-										value={settings.decayRate}
-										onChange={(e) => handleSliderChange("decayRate", parseFloat(e.target.value))}
-										className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-									/>
-								</div>
-								<div>
-									<label className="text-sm">Max Shapes ({settings.maxShapes})</label>
-									<input
-										type="range"
-										min="10"
-										max="200"
-										step="10"
-										value={settings.maxShapes}
-										onChange={(e) => handleSliderChange("maxShapes", parseInt(e.target.value))}
-										className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-									/>
+								<div className="grid gap-3">
+									<div>
+										<label className="text-sm font-medium">Audio Input</label>
+										<select
+											value={selectedDevice}
+											onChange={handleDeviceChange}
+											disabled={audioDevices.length === 0}
+											className="mt-1 w-full p-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
+											{audioDevices.length === 0 ? (
+												<option>Loading devices...</option>
+											) : (
+												audioDevices.map((device) => (
+													<option key={device.index} value={device.index}>
+														{device.name}
+													</option>
+												))
+											)}
+										</select>
+									</div>
+									<div>
+										<label className="text-sm">
+											Rhythm Pulse ({settings.rhythmFactor.toFixed(2)})
+										</label>
+										<input
+											type="range"
+											min="0.005"
+											max="0.2"
+											step="0.005"
+											value={settings.rhythmFactor}
+											onChange={(e) => handleSliderChange("rhythmFactor", parseFloat(e.target.value))}
+											className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
+										/>
+									</div>
+									<div>
+										<label className="text-sm">Decay Rate ({settings.decayRate.toFixed(3)})</label>
+										<input
+											type="range"
+											min="0.9"
+											max="0.999"
+											step="0.001"
+											value={settings.decayRate}
+											onChange={(e) => handleSliderChange("decayRate", parseFloat(e.target.value))}
+											className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
+										/>
+									</div>
+									<div>
+										<label className="text-sm">Max Shapes ({settings.maxShapes})</label>
+										<input
+											type="range"
+											min="10"
+											max="200"
+											step="10"
+											value={settings.maxShapes}
+											onChange={(e) => handleSliderChange("maxShapes", parseInt(e.target.value))}
+											className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
+										/>
+									</div>
+									<div className="flex items-center space-x-2">
+										<div className="relative">
+											<input
+												type="checkbox"
+												checked={isGradientShapes}
+												onChange={handleGradientShapes}
+												className="sr-only"
+												id="gradient-toggle"
+											/>
+											<label
+												htmlFor="gradient-toggle"
+												className={`flex items-center justify-center w-4 h-4 border-2 rounded cursor-pointer transition-colors duration-200 ${
+													isGradientShapes
+														? 'bg-blue-500 border-blue-500'
+														: 'bg-transparent border-gray-400 dark:border-gray-500'
+												}`}
+											>
+												{isGradientShapes && (
+													<svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+														<path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+													</svg>
+												)}
+											</label>
+										</div>
+										<label htmlFor="gradient-toggle" className="text-sm cursor-pointer">Gradient Shapes</label>
+									</div>
 								</div>
 							</div>
 						</div>
-					</div>
+					)}
 				</div>
 			</div>
 
-			{/* Canvas for Visualizer */}
-			<div className="relative w-full max-w-5xl aspect-video overflow-hidden rounded-3xl shadow-2xl border-2 border-transparent">
+			<div className="relative w-full max-w-5xl aspect-video overflow-hidden rounded-3xl shadow-2xl border-2 border-white">
 				<canvas
 					ref={canvasRef}
 					width={canvasDimensions.width}
@@ -323,7 +357,6 @@ const App = () => {
 				/>
 			</div>
 
-			{/* Status Info */}
 			<div
 				className={`mt-8 w-full max-w-xl rounded-2xl shadow-xl p-6 transition-colors duration-300 ${
 					isDarkMode
