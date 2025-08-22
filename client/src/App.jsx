@@ -11,6 +11,12 @@ const Shape = function (x, y) {
 		Math.floor(Math.random() * 255),
 		Math.floor(Math.random() * 255),
 	];
+	// ADD 1: Generate a second random color for gradient effect
+	this.rgb2 = [
+		Math.floor(Math.random() * 255),
+		Math.floor(Math.random() * 255),
+		Math.floor(Math.random() * 255),
+	];
 	this.lifespan = 255;
 };
 
@@ -18,6 +24,7 @@ const App = () => {
 	const [connectionStatus, setConnectionStatus] = useState("Connecting...");
 	const [isDarkMode, setIsDarkMode] = useState(true);
 	const [isPlaying, setIsPlaying] = useState(true);
+	const [isGradientShapes, setIsGradientShapes] = useState(false);
 	const [canvasDimensions, setCanvasDimensions] = useState({ width: 800, height: 600 });
 	const [settings, setSettings] = useState({
 		rhythmFactor: 0.05,
@@ -37,6 +44,11 @@ const App = () => {
 	canvasDimensionsRef.current = canvasDimensions;
 
 	settingsRef.current = settings;
+	
+	// WebSocket connection and audio data handling
+	// Animation loop for continuous rendering
+	// Handle clicking outside settings panel to close it
+	// Handle canvas resizing
 	useEffect(() => {
 		const connectWebSocket = () => {
 			ws.current = new WebSocket("ws://localhost:8766");
@@ -134,12 +146,32 @@ const App = () => {
 			}
 			ctx.closePath();
 
-			// Use the pre-calculated RGB values for much faster rendering
-			const [r, g, b] = shape.rgb;
-			ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${shape.lifespan / 255})`;
+			if (isGradientShapes) {
+				// ADD 2: Create gradient for enhanced visual effect
+				const gradient = ctx.createLinearGradient(
+					shape.x - shape.radius, 
+					shape.y,  
+					shape.x + shape.radius, 
+					shape.y   
+				);
+
+				const [r1, g1, b1] = shape.rgb;
+				const [r2, g2, b2] = shape.rgb2;
+				const opacity = shape.lifespan > 180 ? 1.0 : Math.max(0.6, shape.lifespan / 120);
+				
+				gradient.addColorStop(0, `rgba(${r1}, ${g1}, ${b1}, ${opacity})`);
+				gradient.addColorStop(1, `rgba(${r2}, ${g2}, ${b2}, ${opacity})`);
+				
+				ctx.strokeStyle = gradient;
+			} else {
+				// Use single color for better performance
+				const [r, g, b] = shape.rgb;
+				ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${shape.lifespan / 255})`;
+			}
+			
 			ctx.stroke();
 		});
-	}, []);
+	}, [isGradientShapes]);
 
 	useEffect(() => {
 		let animationFrameId;
@@ -183,6 +215,7 @@ const App = () => {
 		return () => window.removeEventListener("resize", handleResize);
 	}, []);
 
+	// Event handlers
 	const handleSliderChange = (key, value) => {
 		setSettings((prev) => ({ ...prev, [key]: value }));
 	};
@@ -204,6 +237,7 @@ const App = () => {
 	const handleToggleSettings = () => setIsSettingsOpen((prev) => !prev);
 	const handleToggleDarkMode = () => setIsDarkMode((prev) => !prev);
 	const handleTogglePlayPause = () => setIsPlaying((prev) => !prev);
+	const handleGradientShapes = () => setIsGradientShapes((prev) => !prev);
 
 	const handleReset = () => {
 		shapesRef.current = [];
@@ -306,6 +340,33 @@ const App = () => {
 										onChange={(e) => handleSliderChange("maxShapes", parseInt(e.target.value))}
 										className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
 									/>
+								</div>
+								{/* ADD 3: Added a toggle for gradient shapes */}
+								<div className="flex items-center space-x-2">
+									<div className="relative">
+										<input
+											type="checkbox"
+											checked={isGradientShapes}
+											onChange={handleGradientShapes}
+											className="sr-only"
+											id="gradient-toggle"
+										/>
+										<label
+											htmlFor="gradient-toggle"
+											className={`flex items-center justify-center w-4 h-4 border-2 rounded cursor-pointer transition-colors duration-200 ${
+												isGradientShapes
+													? 'bg-blue-500 border-blue-500'
+													: 'bg-transparent border-gray-400 dark:border-gray-500'
+											}`}
+										>
+											{isGradientShapes && (
+												<svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+													<path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+												</svg>
+											)}
+										</label>
+									</div>
+									<label htmlFor="gradient-toggle" className="text-sm cursor-pointer">Gradient Shapes</label>
 								</div>
 							</div>
 						</div>
