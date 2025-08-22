@@ -1,31 +1,28 @@
 /* global process */
-// client/electron/main.js (Versi ES Module)
-
 import { app, BrowserWindow, Menu } from "electron";
 import path from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import treeKill from "tree-kill";
 
-// Di ES Modules, __dirname tidak tersedia secara default. Ini cara modern untuk mendapatkannya.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let pythonProcess = null;
 
 function createPythonServer() {
-	// Dapatkan path ke folder 'server' yang sudah di-bundle
-	const serverPath = app.isPackaged
-		? path.join(process.resourcesPath, "server")
-		: path.join(__dirname, "../../server");
+	let scriptPath;
 
-	// Tentukan nama file eksekusi berdasarkan OS
-	const exeName = process.platform === "win32" ? "main.exe" : "main";
-	const scriptPath = path.join(serverPath, exeName);
+	if (app.isPackaged) {
+		// Saat aplikasi sudah di-build, path-nya menunjuk ke folder 'backend' extra resource
+		scriptPath = path.join(process.resourcesPath, "backend", "main.exe");
+	} else {
+		// Saat development, menunjuk langsung ke hasil build PyInstaller
+		scriptPath = path.join(__dirname, "../../server/dist/main.exe");
+	}
 
 	console.log(`Menjalankan executable server di: ${scriptPath}`);
 
-	// Jalankan file .exe-nya langsung!
 	pythonProcess = spawn(scriptPath);
 
 	pythonProcess.stdout.on("data", (data) => {

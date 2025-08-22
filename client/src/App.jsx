@@ -18,8 +18,6 @@ const Shape = function (x, y) {
 const NUM_BANDS = 16;
 
 const App = () => {
-	const canvasRef = useRef(null);
-	const [shapes, setShapes] = useState([]);
 	const [connectionStatus, setConnectionStatus] = useState("Connecting...");
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isDarkMode, setIsDarkMode] = useState(true);
@@ -33,24 +31,22 @@ const App = () => {
 	});
 	const [audioDevices, setAudioDevices] = useState([]);
 	const [selectedDevice, setSelectedDevice] = useState("");
-	const ws = useRef(null);
-	const animationFrameId = useRef(null);
+	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+	const canvasRef = useRef(null);
+	const shapesRef = useRef([]);
 	const settingsRef = useRef(settings);
-	settingsRef.current = settings;
-
+	const ws = useRef(null);
+	const settingsPanelRef = useRef(null);
 	const canvasDimensionsRef = useRef(canvasDimensions);
 	canvasDimensionsRef.current = canvasDimensions;
 
+	settingsRef.current = settings;
 	useEffect(() => {
 		const connectWebSocket = () => {
 			ws.current = new WebSocket("ws://localhost:8766");
 
-			ws.current.onopen = () => {
-				setConnectionStatus("Connected!");
-				console.log("Connected to WebSocket server");
-			};
-
+			ws.current.onopen = () => setConnectionStatus("Connected!");
 			ws.current.onclose = () => {
 				setConnectionStatus((prevStatus) => {
 					const match = prevStatus.match(/\((\d)\/5\)/);
@@ -60,56 +56,51 @@ const App = () => {
 						return `Disconnected. Retrying... (${prev + 1}/5)`;
 					} else if (prev === 4) {
 						return "Disconnected. Retry limit reached. Please refresh to reconnect.";
-					} else {
-						return prevStatus;
 					}
+					return prevStatus;
 				});
 			};
-
-			ws.current.onerror = (error) => {
-				console.error("WebSocket error:", error);
-			};
+			ws.current.onerror = (error) => console.error("WebSocket error:", error);
 
 			ws.current.onmessage = (event) => {
 				try {
 					const message = JSON.parse(event.data);
 
 					if (message.type === "device_list") {
-						console.log("Received device list:", message.payload);
 						setAudioDevices(message.payload);
 						if (message.payload.length > 0) {
 							const defaultDevice =
 								message.payload.find((d) => d.name.toLowerCase().includes("stereo mix")) ||
 								message.payload[2];
-							setSelectedDevice(defaultDevice ? defaultDevice.index : "");
+							if (defaultDevice) {
+								setSelectedDevice(defaultDevice.index);
+							}
 						}
 					} else if (message.type === "audio_data") {
 						const data = message.payload;
 						const currentSettings = settingsRef.current;
 						const currentDimensions = canvasDimensionsRef.current;
 
-						setShapes((prevShapes) => {
-							let newShapes = [...prevShapes];
-							if (data.is_beat) {
-								newShapes.push(
-									new Shape(currentDimensions.width / 2, currentDimensions.height / 2)
-								);
-								if (newShapes.length > currentSettings.maxShapes) {
-									newShapes = newShapes.slice(-currentSettings.maxShapes);
-								}
+						let currentShapes = shapesRef.current;
+
+						if (data.is_beat) {
+							currentShapes.push(
+								new Shape(currentDimensions.width / 2, currentDimensions.height / 2)
+							);
+							if (currentShapes.length > currentSettings.maxShapes) {
+								shapesRef.current = currentShapes.slice(-currentSettings.maxShapes);
 							}
-							const updatedAndFilteredShapes = newShapes
-								.map((shape) => ({
-									...shape,
-									radius:
-										shape.radius +
-										data.rhythm_factor * currentSettings.rhythmFactor * shape.radius -
-										1,
-									lifespan: shape.lifespan * currentSettings.decayRate,
-								}))
-								.filter((shape) => shape.lifespan > 1);
-							return updatedAndFilteredShapes;
-						});
+						}
+						shapesRef.current = currentShapes
+							.map((shape) => ({
+								...shape,
+								radius:
+									shape.radius +
+									data.rhythm_factor * currentSettings.rhythmFactor * shape.radius -
+									1,
+								lifespan: shape.lifespan * currentSettings.decayRate,
+							}))
+							.filter((shape) => shape.lifespan > 1);
 					}
 				} catch (error) {
 					console.error("Failed to parse WebSocket message:", error);
@@ -131,7 +122,8 @@ const App = () => {
 		const ctx = canvas.getContext("2d");
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-		shapes.forEach((shape) => {
+		// Read the shapes data directly from the ref in each frame
+		shapesRef.current.forEach((shape) => {
 			ctx.beginPath();
 			const points = [];
 			for (let i = 0; i < shape.numVertices; i++) {
@@ -172,20 +164,30 @@ const App = () => {
 	}, [shapes, isGradientShapes]);
 
 	useEffect(() => {
+		let animationFrameId;
+
+		const animationLoop = () => {
+			draw();
+			animationFrameId = requestAnimationFrame(animationLoop);
+		};
+
 		if (isPlaying) {
-			animationFrameId.current = requestAnimationFrame(draw);
-		} else {
-			cancelAnimationFrame(animationFrameId.current);
+			animationLoop();
 		}
 
-		return () => cancelAnimationFrame(animationFrameId.current);
+		return () => {
+			cancelAnimationFrame(animationFrameId);
+		};
 	}, [isPlaying, draw]);
 
 	useEffect(() => {
 		const handleResize = () => {
 			const canvas = canvasRef.current;
 			if (canvas) {
-				setCanvasDimensions({ width: canvas.clientWidth, height: canvas.clientHeight });
+				setCanvasDimensions({
+					width: canvas.parentElement.clientWidth,
+					height: canvas.parentElement.clientHeight,
+				});
 			}
 		};
 		window.addEventListener("resize", handleResize);
@@ -202,13 +204,10 @@ const App = () => {
 		setSelectedDevice(e.target.value);
 
 		if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-			console.log(`Sending request to switch to device index: ${newDeviceIndex}`);
 			ws.current.send(
 				JSON.stringify({
 					type: "select_device",
-					payload: {
-						index: newDeviceIndex,
-					},
+					payload: { index: newDeviceIndex },
 				})
 			);
 		}
@@ -218,7 +217,10 @@ const App = () => {
 	const handleToggleDarkMode = () => setIsDarkMode((prev) => !prev);
 	const handleGradientShapes = () => setIsGradientShapes((prev) => !prev);
 	const handleTogglePlayPause = () => setIsPlaying((prev) => !prev);
-	const handleReset = () => setShapes([]);
+
+	const handleReset = () => {
+		shapesRef.current = [];
+	};
 
 	return (
 		<div
