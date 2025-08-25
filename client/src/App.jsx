@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCcw, SlidersHorizontal, Sun, Moon, Play, Pause } from "lucide-react";
+import { RefreshCcw, SlidersHorizontal, Sun, Moon, Play, Pause, Maximize, Minimize } from "lucide-react";
 
 const Shape = function (x, y) {
 	this.x = x;
@@ -11,7 +11,7 @@ const Shape = function (x, y) {
 		Math.floor(Math.random() * 255),
 		Math.floor(Math.random() * 255),
 	];
-	// ADD 1: Generate a second random color for gradient effect
+	// Generate a second random color for gradient effect
 	this.rgb2 = [
 		Math.floor(Math.random() * 255),
 		Math.floor(Math.random() * 255),
@@ -23,6 +23,7 @@ const Shape = function (x, y) {
 const App = () => {
 	const [connectionStatus, setConnectionStatus] = useState("Connecting...");
 	const [isDarkMode, setIsDarkMode] = useState(true);
+	const [isFullscreen, setIsFullscreen] = useState(false);
 	const [isPlaying, setIsPlaying] = useState(true);
 	const [isGradientShapes, setIsGradientShapes] = useState(false);
 	const [canvasDimensions, setCanvasDimensions] = useState({ width: 800, height: 600 });
@@ -36,6 +37,8 @@ const App = () => {
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
 	const canvasRef = useRef(null);
+	// Direct reference to canvas container for fullscreen functionality
+	const canvasContainerRef = useRef(null);
 	const shapesRef = useRef([]);
 	const settingsRef = useRef(settings);
 	const ws = useRef(null);
@@ -45,10 +48,17 @@ const App = () => {
 
 	settingsRef.current = settings;
 	
+	// Listen for fullscreen changes to keep state in sync (handles ESC key)
+	useEffect(() => {
+		const handleFullscreenChange = () => {
+			setIsFullscreen(!!document.fullscreenElement);
+		};
+		
+		document.addEventListener('fullscreenchange', handleFullscreenChange);
+		return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+	}, []);
+	
 	// WebSocket connection and audio data handling
-	// Animation loop for continuous rendering
-	// Handle clicking outside settings panel to close it
-	// Handle canvas resizing
 	useEffect(() => {
 		const connectWebSocket = () => {
 			ws.current = new WebSocket("ws://localhost:8766");
@@ -122,6 +132,7 @@ const App = () => {
 		};
 	}, []);
 
+	// Animation loop for continuous rendering
 	const draw = useCallback(() => {
 		const canvas = canvasRef.current;
 		if (!canvas) return;
@@ -129,7 +140,6 @@ const App = () => {
 		const ctx = canvas.getContext("2d");
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-		// Read the shapes data directly from the ref in each frame
 		shapesRef.current.forEach((shape) => {
 			ctx.beginPath();
 			const points = [];
@@ -147,7 +157,7 @@ const App = () => {
 			ctx.closePath();
 
 			if (isGradientShapes) {
-				// ADD 2: Create gradient for enhanced visual effect
+				// Create gradient for enhanced visual effect
 				const gradient = ctx.createLinearGradient(
 					shape.x - shape.radius, 
 					shape.y,  
@@ -190,6 +200,7 @@ const App = () => {
 		};
 	}, [isPlaying, draw]);
 
+	// Handle clicking outside settings panel to close it
 	useEffect(() => {
 		const handleClickOutside = (event) => {
 			if (settingsPanelRef.current && !settingsPanelRef.current.contains(event.target)) {
@@ -200,6 +211,7 @@ const App = () => {
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
 
+	// Handle canvas resizing
 	useEffect(() => {
 		const handleResize = () => {
 			const canvas = canvasRef.current;
@@ -236,6 +248,20 @@ const App = () => {
 
 	const handleToggleSettings = () => setIsSettingsOpen((prev) => !prev);
 	const handleToggleDarkMode = () => setIsDarkMode((prev) => !prev);
+	
+	// Updated fullscreen function to use direct ref
+	const handleToggleFullscreen = () => {
+		if (!document.fullscreenElement) {
+			canvasContainerRef.current?.requestFullscreen().catch(err => {
+				console.log("Error entering fullscreen:", err);
+			});
+		} else {
+			document.exitFullscreen().catch(err => {
+				console.log("Error exiting fullscreen:", err);
+			});
+		}
+	};
+	
 	const handleTogglePlayPause = () => setIsPlaying((prev) => !prev);
 	const handleGradientShapes = () => setIsGradientShapes((prev) => !prev);
 
@@ -248,7 +274,7 @@ const App = () => {
 			className={`flex flex-col items-center justify-center min-h-screen p-4 font-sans transition-colors duration-500 ${
 				isDarkMode ? "bg-gray-900 text-gray-100" : "bg-gray-100 text-gray-900"
 			}`}>
-			{/* UI Controls: Play, Pause, Reset, Dark Mode, Settings */}
+			{/* UI Controls: Play, Pause, Reset */}
 			<div className="absolute top-4 left-4 z-10 flex space-x-2">
 				<button
 					onClick={handleTogglePlayPause}
@@ -261,11 +287,18 @@ const App = () => {
 					<RefreshCcw size={20} />
 				</button>
 			</div>
+
+			{/* UI Controls: Dark Mode, Fullscreen, Settings */}
 			<div className="absolute top-4 right-4 z-10 flex space-x-2">
 				<button
 					onClick={handleToggleDarkMode}
 					className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
 					{isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+				</button>
+				<button
+					onClick={handleToggleFullscreen}
+					className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
+					{isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
 				</button>
 				<div className="relative group" ref={settingsPanelRef}>
 					<button
@@ -341,7 +374,7 @@ const App = () => {
 										className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
 									/>
 								</div>
-								{/* ADD 3: Added a toggle for gradient shapes */}
+								{/* Gradient shapes toggle */}
 								<div className="flex items-center space-x-2">
 									<div className="relative">
 										<input
@@ -375,7 +408,19 @@ const App = () => {
 			</div>
 
 			{/* Canvas for Visualizer */}
-			<div className="relative w-full max-w-5xl aspect-video overflow-hidden rounded-3xl shadow-2xl border-2 border-transparent">
+			<div 
+				ref={canvasContainerRef}
+				className={`relative w-full max-w-5xl aspect-video overflow-hidden rounded-3xl shadow-2xl border-2 border-transparent ${
+					isDarkMode ? "bg-gray-900" : "bg-gray-100"
+				}`}>
+				{/* Minimize button that only appears when in fullscreen mode */}
+				{isFullscreen && (
+					<button
+						onClick={handleToggleFullscreen}
+						className="absolute top-4 right-4 z-20 p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
+						<Minimize size={20} />
+					</button>
+				)}
 				<canvas
 					ref={canvasRef}
 					width={canvasDimensions.width}
