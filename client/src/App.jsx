@@ -11,11 +11,6 @@ const Shape = function (x, y) {
 		Math.floor(Math.random() * 255),
 		Math.floor(Math.random() * 255),
 	];
-	this.rgb2 = [
-		Math.floor(Math.random() * 255),
-		Math.floor(Math.random() * 255),
-		Math.floor(Math.random() * 255),
-	];
 	this.lifespan = 255;
 };
 
@@ -46,6 +41,11 @@ const App = () => {
 	canvasDimensionsRef.current = canvasDimensions;
 
 	settingsRef.current = settings;
+	
+	// WebSocket connection and audio data handling
+	// Animation loop for continuous rendering
+	// Handle clicking outside settings panel to close it
+	// Handle canvas resizing
 
 	// ADD 5-fs: Listen for fullscreen changes to keep state in sync (handles ESC key)
 	useEffect(() => {
@@ -154,6 +154,7 @@ const App = () => {
 			ctx.closePath();
 
 			if (isGradientShapes) {
+				// ADD 2: Create gradient for enhanced visual effect
 				const gradient = ctx.createLinearGradient(
 					shape.x - shape.radius, 
 					shape.y,  
@@ -170,6 +171,7 @@ const App = () => {
 				
 				ctx.strokeStyle = gradient;
 			} else {
+				// Use single color for better performance
 				const [r, g, b] = shape.rgb;
 				ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${shape.lifespan / 255})`;
 			}
@@ -220,6 +222,7 @@ const App = () => {
 		return () => window.removeEventListener("resize", handleResize);
 	}, []);
 
+	// Event handlers
 	const handleSliderChange = (key, value) => {
 		setSettings((prev) => ({ ...prev, [key]: value }));
 	};
@@ -363,6 +366,7 @@ const App = () => {
 										className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
 									/>
 								</div>
+								{/* ADD 3: Added a toggle for gradient shapes */}
 								<div className="flex items-center space-x-2">
 									<div className="relative">
 										<input
