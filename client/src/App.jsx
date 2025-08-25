@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCcw, SlidersHorizontal, Sun, Moon, Play, Pause } from "lucide-react";
+import { RefreshCcw, SlidersHorizontal, Sun, Moon, Play, Pause, Maximize, Minimize } from "lucide-react";
 
 const Shape = function (x, y) {
 	this.x = x;
@@ -11,13 +11,20 @@ const Shape = function (x, y) {
 		Math.floor(Math.random() * 255),
 		Math.floor(Math.random() * 255),
 	];
+	this.rgb2 = [
+		Math.floor(Math.random() * 255),
+		Math.floor(Math.random() * 255),
+		Math.floor(Math.random() * 255),
+	];
 	this.lifespan = 255;
 };
 
 const App = () => {
 	const [connectionStatus, setConnectionStatus] = useState("Connecting...");
 	const [isDarkMode, setIsDarkMode] = useState(true);
+	const [isFullscreen, setIsFullscreen] = useState(false);
 	const [isPlaying, setIsPlaying] = useState(true);
+	const [isGradientShapes, setIsGradientShapes] = useState(false);
 	const [canvasDimensions, setCanvasDimensions] = useState({ width: 800, height: 600 });
 	const [settings, setSettings] = useState({
 		rhythmFactor: 0.05,
@@ -29,6 +36,8 @@ const App = () => {
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
 	const canvasRef = useRef(null);
+	// ADD 4-fs: Direct reference to canvas container for fullscreen functionality
+	const canvasContainerRef = useRef(null);
 	const shapesRef = useRef([]);
 	const settingsRef = useRef(settings);
 	const ws = useRef(null);
@@ -37,6 +46,17 @@ const App = () => {
 	canvasDimensionsRef.current = canvasDimensions;
 
 	settingsRef.current = settings;
+
+	// ADD 5-fs: Listen for fullscreen changes to keep state in sync (handles ESC key)
+	useEffect(() => {
+		const handleFullscreenChange = () => {
+			setIsFullscreen(!!document.fullscreenElement);
+		};
+		
+		document.addEventListener('fullscreenchange', handleFullscreenChange);
+		return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+	}, []);
+	
 	useEffect(() => {
 		const connectWebSocket = () => {
 			ws.current = new WebSocket("ws://localhost:8766");
@@ -117,7 +137,6 @@ const App = () => {
 		const ctx = canvas.getContext("2d");
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-		// Read the shapes data directly from the ref in each frame
 		shapesRef.current.forEach((shape) => {
 			ctx.beginPath();
 			const points = [];
@@ -134,12 +153,30 @@ const App = () => {
 			}
 			ctx.closePath();
 
-			// Use the pre-calculated RGB values for much faster rendering
-			const [r, g, b] = shape.rgb;
-			ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${shape.lifespan / 255})`;
+			if (isGradientShapes) {
+				const gradient = ctx.createLinearGradient(
+					shape.x - shape.radius, 
+					shape.y,  
+					shape.x + shape.radius, 
+					shape.y   
+				);
+
+				const [r1, g1, b1] = shape.rgb;
+				const [r2, g2, b2] = shape.rgb2;
+				const opacity = shape.lifespan > 180 ? 1.0 : Math.max(0.6, shape.lifespan / 120);
+				
+				gradient.addColorStop(0, `rgba(${r1}, ${g1}, ${b1}, ${opacity})`);
+				gradient.addColorStop(1, `rgba(${r2}, ${g2}, ${b2}, ${opacity})`);
+				
+				ctx.strokeStyle = gradient;
+			} else {
+				const [r, g, b] = shape.rgb;
+				ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${shape.lifespan / 255})`;
+			}
+			
 			ctx.stroke();
 		});
-	}, []);
+	}, [isGradientShapes]);
 
 	useEffect(() => {
 		let animationFrameId;
@@ -203,7 +240,22 @@ const App = () => {
 
 	const handleToggleSettings = () => setIsSettingsOpen((prev) => !prev);
 	const handleToggleDarkMode = () => setIsDarkMode((prev) => !prev);
+	
+	// ADD 6-fs: Updated fullscreen function to use direct ref instead of parent element lookup
+	const handleToggleFullscreen = () => {
+		if (!document.fullscreenElement) {
+			canvasContainerRef.current?.requestFullscreen().catch(err => {
+				console.log("Error entering fullscreen:", err);
+			});
+		} else {
+			document.exitFullscreen().catch(err => {
+				console.log("Error exiting fullscreen:", err);
+			});
+		}
+	};
+	
 	const handleTogglePlayPause = () => setIsPlaying((prev) => !prev);
+	const handleGradientShapes = () => setIsGradientShapes((prev) => !prev);
 
 	const handleReset = () => {
 		shapesRef.current = [];
@@ -214,7 +266,6 @@ const App = () => {
 			className={`flex flex-col items-center justify-center min-h-screen p-4 font-sans transition-colors duration-500 ${
 				isDarkMode ? "bg-gray-900 text-gray-100" : "bg-gray-100 text-gray-900"
 			}`}>
-			{/* UI Controls: Play, Pause, Reset, Dark Mode, Settings */}
 			<div className="absolute top-4 left-4 z-10 flex space-x-2">
 				<button
 					onClick={handleTogglePlayPause}
@@ -232,6 +283,11 @@ const App = () => {
 					onClick={handleToggleDarkMode}
 					className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
 					{isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+				</button>
+				<button
+					onClick={handleToggleFullscreen}
+					className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
+					{isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
 				</button>
 				<div className="relative group" ref={settingsPanelRef}>
 					<button
@@ -307,14 +363,51 @@ const App = () => {
 										className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
 									/>
 								</div>
+								<div className="flex items-center space-x-2">
+									<div className="relative">
+										<input
+											type="checkbox"
+											checked={isGradientShapes}
+											onChange={handleGradientShapes}
+											className="sr-only"
+											id="gradient-toggle"
+										/>
+										<label
+											htmlFor="gradient-toggle"
+											className={`flex items-center justify-center w-4 h-4 border-2 rounded cursor-pointer transition-colors duration-200 ${
+												isGradientShapes
+													? 'bg-blue-500 border-blue-500'
+													: 'bg-transparent border-gray-400 dark:border-gray-500'
+											}`}
+										>
+											{isGradientShapes && (
+												<svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+													<path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+												</svg>
+											)}
+										</label>
+									</div>
+									<label htmlFor="gradient-toggle" className="text-sm cursor-pointer">Gradient Shapes</label>
+								</div>
 							</div>
 						</div>
 					</div>
 				</div>
 			</div>
 
-			{/* Canvas for Visualizer */}
-			<div className="relative w-full max-w-5xl aspect-video overflow-hidden rounded-3xl shadow-2xl border-2 border-transparent">
+			<div 
+				ref={canvasContainerRef}
+				className={`relative w-full max-w-5xl aspect-video overflow-hidden rounded-3xl shadow-2xl border-2 border-transparent ${
+					isDarkMode ? "bg-gray-900" : "bg-gray-100"
+				}`}>
+				{/* ADD 7-fs: Minimize button that only appears when in fullscreen mode */}
+				{isFullscreen && (
+					<button
+						onClick={handleToggleFullscreen}
+						className="absolute top-4 right-4 z-20 p-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-full shadow-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200">
+						<Minimize size={20} />
+					</button>
+				)}
 				<canvas
 					ref={canvasRef}
 					width={canvasDimensions.width}
@@ -323,7 +416,6 @@ const App = () => {
 				/>
 			</div>
 
-			{/* Status Info */}
 			<div
 				className={`mt-8 w-full max-w-xl rounded-2xl shadow-xl p-6 transition-colors duration-300 ${
 					isDarkMode
