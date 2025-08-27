@@ -4,8 +4,20 @@ import { RefreshCcw, SlidersHorizontal, Sun, Moon, Play, Pause, Maximize, Minimi
 const Shape = function (x, y) {
 	this.x = x;
 	this.y = y;
-	this.radius = 30;
-	this.numVertices = Math.floor(Math.random() * 8) + 3;
+	this.radius = 20;  
+	// ADD 1-ns: added new random shape type (polygon, circle, star)
+	const rand = Math.random();
+	if (rand < 0.33) {
+		this.shapeType = 'polygon';
+		this.numVertices = Math.floor(Math.random() * 6) + 3;
+	} else if (rand < 0.66) {
+		this.shapeType = 'circle';
+	} else {
+		this.shapeType = 'star';
+		this.numPoints = Math.floor(Math.random() * 4) + 5; 
+		this.innerRadius = this.radius * (0.4 + Math.random() * 0.2); 
+	}
+	
 	this.rgb = [
 		Math.floor(Math.random() * 255),
 		Math.floor(Math.random() * 255),
@@ -28,8 +40,8 @@ const App = () => {
 	const [isGradientShapes, setIsGradientShapes] = useState(false);
 	const [canvasDimensions, setCanvasDimensions] = useState({ width: 800, height: 600 });
 	const [settings, setSettings] = useState({
-		rhythmFactor: 0.05,
-		decayRate: 0.98,
+		rhythmFactor: 0.1,  
+		decayRate: 0.98, 
 		maxShapes: 50,
 	});
 	const [audioDevices, setAudioDevices] = useState([]);
@@ -108,15 +120,22 @@ const App = () => {
 								shapesRef.current = currentShapes.slice(-currentSettings.maxShapes);
 							}
 						}
+						
+						// Fixed: Better radius and lifespan calculation for more reactive shapes
 						shapesRef.current = currentShapes
-							.map((shape) => ({
-								...shape,
-								radius:
-									shape.radius +
-									data.rhythm_factor * currentSettings.rhythmFactor * shape.radius -
-									1,
-								lifespan: shape.lifespan * currentSettings.decayRate,
-							}))
+							.map((shape) => {
+								const growthFactor = data.rhythm_factor * currentSettings.rhythmFactor * 100;
+								const newRadius = shape.radius + growthFactor;
+								
+								return {
+									...shape,
+									radius: newRadius,
+									lifespan: shape.lifespan * currentSettings.decayRate,
+									innerRadius: shape.shapeType === 'star' ? 
+										newRadius * (shape.innerRadius / shape.radius) : 
+										shape.innerRadius
+								};
+							})
 							.filter((shape) => shape.lifespan > 1);
 					}
 				} catch (error) {
@@ -142,22 +161,47 @@ const App = () => {
 
 		shapesRef.current.forEach((shape) => {
 			ctx.beginPath();
-			const points = [];
-			for (let i = 0; i < shape.numVertices; i++) {
-				const angle = (2 * Math.PI * i) / shape.numVertices;
-				const x = shape.x + shape.radius * Math.cos(angle);
-				const y = shape.y + shape.radius * Math.sin(angle);
-				points.push({ x, y });
+			
+			// ADD 2-ns: added a draw function for Circles and Stars
+			if (shape.shapeType === 'circle') {
+				ctx.arc(shape.x, shape.y, shape.radius, 0, 2 * Math.PI);
+			} else if (shape.shapeType === 'star') {
+				const points = [];
+				for (let i = 0; i < shape.numPoints * 2; i++) {
+					const angle = (Math.PI * i) / shape.numPoints;
+					const radius = i % 2 === 0 ? shape.radius : shape.innerRadius;
+					const x = shape.x + radius * Math.cos(angle - Math.PI / 2);
+					const y = shape.y + radius * Math.sin(angle - Math.PI / 2);
+					points.push({ x, y });
+				}
+				
+				if (points.length > 0) { 
+					ctx.moveTo(points[0].x, points[0].y);
+					for (let i = 1; i < points.length; i++) {
+						ctx.lineTo(points[i].x, points[i].y);
+					}
+					ctx.closePath();
+				}
+			} else {
+				// Polygon
+				const points = [];
+				for (let i = 0; i < shape.numVertices; i++) {
+					const angle = (2 * Math.PI * i) / shape.numVertices;
+					const x = shape.x + shape.radius * Math.cos(angle);
+					const y = shape.y + shape.radius * Math.sin(angle);
+					points.push({ x, y });
+				}
+				
+				if (points.length > 0) { 
+					ctx.moveTo(points[0].x, points[0].y);
+					for (let i = 1; i < points.length; i++) {
+						ctx.lineTo(points[i].x, points[i].y);
+					}
+					ctx.closePath();
+				}
 			}
-
-			ctx.moveTo(points[0].x, points[0].y);
-			for (let i = 1; i < points.length; i++) {
-				ctx.lineTo(points[i].x, points[i].y);
-			}
-			ctx.closePath();
 
 			if (isGradientShapes) {
-				// Create gradient for enhanced visual effect
 				const gradient = ctx.createLinearGradient(
 					shape.x - shape.radius, 
 					shape.y,  
@@ -167,18 +211,19 @@ const App = () => {
 
 				const [r1, g1, b1] = shape.rgb;
 				const [r2, g2, b2] = shape.rgb2;
-				const opacity = shape.lifespan > 180 ? 1.0 : Math.max(0.6, shape.lifespan / 120);
+				const opacity = Math.max(0.1, Math.min(1.0, shape.lifespan / 255));
 				
 				gradient.addColorStop(0, `rgba(${r1}, ${g1}, ${b1}, ${opacity})`);
 				gradient.addColorStop(1, `rgba(${r2}, ${g2}, ${b2}, ${opacity})`);
 				
 				ctx.strokeStyle = gradient;
 			} else {
-				// Use single color for better performance
 				const [r, g, b] = shape.rgb;
-				ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${shape.lifespan / 255})`;
+				const opacity = Math.max(0.1, Math.min(1.0, shape.lifespan / 255));
+				ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`;
 			}
 			
+			ctx.lineWidth = 1; 
 			ctx.stroke();
 		});
 	}, [isGradientShapes]);
@@ -354,7 +399,7 @@ const App = () => {
 									<label className="text-sm">Decay Rate ({settings.decayRate.toFixed(3)})</label>
 									<input
 										type="range"
-										min="0.9"
+										min="0.990"
 										max="0.999"
 										step="0.001"
 										value={settings.decayRate}
